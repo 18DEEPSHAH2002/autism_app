@@ -3,7 +3,9 @@ import pandas as pd
 import numpy as np
 import joblib
 
+# -----------------------------
 # Load model and preprocessing objects
+# -----------------------------
 model = joblib.load("svc_model.pkl")
 scaler = joblib.load("scaler.pkl")
 
@@ -62,31 +64,37 @@ input_data = pd.DataFrame({
 })
 
 # -----------------------------
-# Apply Label Encoders
+# Safe transform for LabelEncoder
 # -----------------------------
-input_data["country_of_res"] = country_encoder.transform(input_data["country_of_res"])
-input_data["used_app_before"] = used_app_encoder.transform(input_data["used_app_before"])
+def safe_label_transform(encoder, value):
+    if value in encoder.classes_:
+        return encoder.transform([value])[0]
+    else:
+        return 0  # default to 0 if unseen
+
+input_data["country_of_res"] = input_data["country_of_res"].apply(lambda x: safe_label_transform(country_encoder, x))
+input_data["used_app_before"] = input_data["used_app_before"].apply(lambda x: safe_label_transform(used_app_encoder, x))
 
 # -----------------------------
-# Apply OneHotEncoders
+# Safe transform for OneHotEncoder
 # -----------------------------
-gender_ohe = gender_encoder.transform(input_data[["gender"]]).toarray()
-gender_df = pd.DataFrame(gender_ohe, columns=gender_encoder.get_feature_names_out(["gender"]))
+def safe_ohe_transform(encoder, df, column):
+    try:
+        ohe = encoder.transform(df[[column]]).toarray()
+    except ValueError:
+        # if unseen category, create zeros
+        ohe = np.zeros((df.shape[0], len(encoder.get_feature_names_out([column]))))
+    return pd.DataFrame(ohe, columns=encoder.get_feature_names_out([column]))
 
-jaundice_ohe = jaundice_encoder.transform(input_data[["jaundice"]]).toarray()
-jaundice_df = pd.DataFrame(jaundice_ohe, columns=jaundice_encoder.get_feature_names_out(["jaundice"]))
-
-autism_ohe = autism_encoder.transform(input_data[["autism"]]).toarray()
-autism_df = pd.DataFrame(autism_ohe, columns=autism_encoder.get_feature_names_out(["autism"]))
+gender_df = safe_ohe_transform(gender_encoder, input_data, "gender")
+jaundice_df = safe_ohe_transform(jaundice_encoder, input_data, "jaundice")
+autism_df = safe_ohe_transform(autism_encoder, input_data, "autism")
 
 # Drop original categorical columns
 input_data = input_data.drop(columns=["gender", "jaundice", "autism"])
 
 # Concatenate numeric + encoded categorical features
-input_data = pd.concat(
-    [input_data.reset_index(drop=True), gender_df, jaundice_df, autism_df],
-    axis=1
-)
+input_data = pd.concat([input_data.reset_index(drop=True), gender_df, jaundice_df, autism_df], axis=1)
 
 # -----------------------------
 # Scale features
