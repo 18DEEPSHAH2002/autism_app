@@ -1,109 +1,92 @@
+# streamlit_app.py
+
 import streamlit as st
 import pandas as pd
-import numpy as np
 import joblib
 
-# -----------------------------
-# Load model and preprocessing objects
-# -----------------------------
-model = joblib.load("svc_model.pkl")
+# ---------------------------
+# Load trained objects
+# ---------------------------
+best_svc = joblib.load("svc_model.pkl")
 scaler = joblib.load("scaler.pkl")
+le_country = joblib.load("country_encoder.pkl")
+le_used_app = joblib.load("used_app_encoder.pkl")
+ohe = joblib.load("onehot_encoder.pkl")
+le_class = joblib.load("class_encoder.pkl")
 
-country_encoder = joblib.load("country_encoder.pkl")   # LabelEncoder
-used_app_encoder = joblib.load("used_app_encoder.pkl") # LabelEncoder
-gender_encoder = joblib.load("gender_encoder.pkl")     # OneHotEncoder
-jaundice_encoder = joblib.load("jaundice_encoder.pkl") # OneHotEncoder
-autism_encoder = joblib.load("autism_encoder.pkl")     # OneHotEncoder
+# ---------------------------
+# Streamlit UI
+# ---------------------------
+st.title("Autism Spectrum Disorder Screening Prediction 🧩")
+st.write("Enter the details below to predict whether a child is likely to have autism or not:")
 
-st.title("Autism Screening Prediction App")
-st.write("Select the details below to predict the autism screening class")
+# Input features
+A1 = st.selectbox("A1 Score", [0, 1])
+A2 = st.selectbox("A2 Score", [0, 1])
+A3 = st.selectbox("A3 Score", [0, 1])
+A4 = st.selectbox("A4 Score", [0, 1])
+A5 = st.selectbox("A5 Score", [0, 1])
+A6 = st.selectbox("A6 Score", [0, 1])
+A7 = st.selectbox("A7 Score", [0, 1])
+A8 = st.selectbox("A8 Score", [0, 1])
+A9 = st.selectbox("A9 Score", [0, 1])
+A10 = st.selectbox("A10 Score", [0, 1])
 
-# -----------------------------
-# User Inputs (A1 → A10 using selectbox)
-# -----------------------------
-options = [0, 1]  # Score options
+age = st.number_input("Age", min_value=1, max_value=18, value=5)
 
-A1_Score = st.selectbox("A1 Score", options)
-A2_Score = st.selectbox("A2 Score", options)
-A3_Score = st.selectbox("A3 Score", options)
-A4_Score = st.selectbox("A4 Score", options)
-A5_Score = st.selectbox("A5 Score", options)
-A6_Score = st.selectbox("A6 Score", options)
-A7_Score = st.selectbox("A7 Score", options)
-A8_Score = st.selectbox("A8 Score", options)
-A9_Score = st.selectbox("A9 Score", options)
-A10_Score = st.selectbox("A10 Score", options)
+gender = st.selectbox("Gender", ['male', 'female'])
+jaundice = st.selectbox("Jaundice", ['yes', 'no'])
+autism = st.selectbox("Autism", ['yes', 'no'])
 
-age = st.selectbox("Age", list(range(1, 101)))
-gender = st.selectbox("Gender", ["male", "female"])
-jaundice = st.selectbox("Jaundice (born with)", ["yes", "no"])
-autism = st.selectbox("Family history of autism", ["yes", "no"])
-used_app_before = st.selectbox("Used screening app before", ["yes", "no"])
-country_of_res = st.text_input("Country of Residence", value="India")
+country_of_res = st.selectbox("Country of Residence", le_country.classes_)
+used_app_before = st.selectbox("Used App Before?", le_used_app.classes_)
 
-# -----------------------------
-# Create input dataframe
-# -----------------------------
-input_data = pd.DataFrame({
-    "A1_Score": [A1_Score],
-    "A2_Score": [A2_Score],
-    "A3_Score": [A3_Score],
-    "A4_Score": [A4_Score],
-    "A5_Score": [A5_Score],
-    "A6_Score": [A6_Score],
-    "A7_Score": [A7_Score],
-    "A8_Score": [A8_Score],
-    "A9_Score": [A9_Score],
-    "A10_Score": [A10_Score],
-    "age": [age],
-    "gender": [gender],
-    "jaundice": [jaundice],
-    "autism": [autism],
-    "used_app_before": [used_app_before],
-    "country_of_res": [country_of_res]
-})
-
-# -----------------------------
-# Safe transform for LabelEncoder
-# -----------------------------
-def safe_label_transform(encoder, value):
-    if value in encoder.classes_:
-        return encoder.transform([value])[0]
-    else:
-        return 0  # default to 0 if unseen
-
-input_data["country_of_res"] = input_data["country_of_res"].apply(lambda x: safe_label_transform(country_encoder, x))
-input_data["used_app_before"] = input_data["used_app_before"].apply(lambda x: safe_label_transform(used_app_encoder, x))
-
-# -----------------------------
-# Safe transform for OneHotEncoder
-# -----------------------------
-def safe_ohe_transform(encoder, df, column):
-    try:
-        ohe = encoder.transform(df[[column]]).toarray()
-    except ValueError:
-        # if unseen category, create zeros
-        ohe = np.zeros((df.shape[0], len(encoder.get_feature_names_out([column]))))
-    return pd.DataFrame(ohe, columns=encoder.get_feature_names_out([column]))
-
-gender_df = safe_ohe_transform(gender_encoder, input_data, "gender")
-jaundice_df = safe_ohe_transform(jaundice_encoder, input_data, "jaundice")
-autism_df = safe_ohe_transform(autism_encoder, input_data, "autism")
-
-# Drop original categorical columns
-input_data = input_data.drop(columns=["gender", "jaundice", "autism"])
-
-# Concatenate numeric + encoded categorical features
-input_data = pd.concat([input_data.reset_index(drop=True), gender_df, jaundice_df, autism_df], axis=1)
-
-# -----------------------------
-# Scale features
-# -----------------------------
-final_input_scaled = scaler.transform(input_data)
-
-# -----------------------------
-# Prediction button
-# -----------------------------
+# Predict button
 if st.button("Predict"):
-    prediction = model.predict(final_input_scaled)[0]
-    st.success(f"Predicted Class: {prediction}")
+    # Create DataFrame
+    user_input = {
+        'A1_Score': A1, 'A2_Score': A2, 'A3_Score': A3, 'A4_Score': A4, 'A5_Score': A5,
+        'A6_Score': A6, 'A7_Score': A7, 'A8_Score': A8, 'A9_Score': A9, 'A10_Score': A10,
+        'age': age, 'gender': gender, 'jaundice': jaundice, 'autism': autism,
+        'country_of_res': country_of_res, 'used_app_before': used_app_before
+    }
+
+    new_df = pd.DataFrame([user_input])
+
+    # One-hot encode gender, jaundice, autism
+    categorical_cols_ohe = ['gender', 'jaundice', 'autism']
+    encoded_ohe = ohe.transform(new_df[categorical_cols_ohe])
+    ohe_cols = ohe.get_feature_names_out(categorical_cols_ohe)
+    encoded_df = pd.DataFrame(encoded_ohe, columns=ohe_cols, index=new_df.index)
+    new_df = pd.concat([new_df, encoded_df], axis=1)
+    new_df.drop(columns=categorical_cols_ohe, inplace=True)
+
+    # Label encode country and used_app_before
+    new_df['country_of_res'] = le_country.transform(new_df['country_of_res'])
+    new_df['used_app_before'] = le_used_app.transform(new_df['used_app_before'])
+
+    # Ensure column order matches training features
+    try:
+        from training_data import X  # If you saved your training X somewhere
+        new_df = new_df[X.columns]
+    except:
+        st.warning("Training features (X) not available. Make sure column order matches training data.")
+
+    # Scale features
+    new_scaled = scaler.transform(new_df)
+
+    # Predict
+    prediction = best_svc.predict(new_scaled)[0]
+    predicted_label = le_class.inverse_transform([prediction])[0]
+
+    st.success(f"Predicted Class: {predicted_label}")
+
+    # Predict probabilities
+    if hasattr(best_svc, 'predict_proba'):
+        probabilities = best_svc.predict_proba(new_scaled)[0]
+        prob_df = pd.DataFrame({
+            'Class': le_class.inverse_transform(best_svc.classes_),
+            'Probability': probabilities
+        })
+        st.write("Prediction Probabilities:")
+        st.dataframe(prob_df)
